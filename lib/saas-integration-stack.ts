@@ -1,19 +1,44 @@
-import { Duration, Stack, StackProps } from 'aws-cdk-lib';
-import * as sns from 'aws-cdk-lib/aws-sns';
-import * as subs from 'aws-cdk-lib/aws-sns-subscriptions';
-import * as sqs from 'aws-cdk-lib/aws-sqs';
+import { Stack, StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
+import {NodejsFunction} from "aws-cdk-lib/aws-lambda-nodejs";
+import {Runtime} from "aws-cdk-lib/aws-lambda";
+import { join } from 'path';
+import {CorsHttpMethod, HttpApi, HttpMethod} from "aws-cdk-lib/aws-apigatewayv2";
+import {HttpLambdaIntegration} from "aws-cdk-lib/aws-apigatewayv2-integrations";
+import {getRedirectLambdaRole} from "../helpers/iam-roles-helper";
 
 export class SaasIntegrationStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    const queue = new sqs.Queue(this, 'SaasIntegrationQueue', {
-      visibilityTimeout: Duration.seconds(300)
+    const myLambdaFilePath = join(__dirname, "..", "lambda", "edge-redirect.ts");
+
+   const role = getRedirectLambdaRole(this);
+
+    const edgeRedirectLambda = new NodejsFunction(this, "EdgeRedirect", {
+      runtime: Runtime.NODEJS_18_X,
+      handler: "handler",
+      functionName: "edge-redirect",
+      entry: myLambdaFilePath,
+      role
     });
 
-    const topic = new sns.Topic(this, 'SaasIntegrationTopic');
+    const httpApi = new HttpApi(this, "MainApi", {
+      apiName: "My API",
+      corsPreflight: {
+        allowMethods: [
+          CorsHttpMethod.POST,
+        ],
+        allowOrigins: ["*"],
+      },
+    });
 
-    topic.addSubscription(new subs.SqsSubscription(queue));
-  }
+    const templateLambdaIntegration = new HttpLambdaIntegration('TemplateIntegration', edgeRedirectLambda);
+
+    httpApi.addRoutes({
+      path: '/',
+      methods: [HttpMethod.POST],
+      integration: templateLambdaIntegration,
+    })
+  };
 }
