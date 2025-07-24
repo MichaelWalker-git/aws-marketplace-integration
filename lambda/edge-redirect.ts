@@ -4,11 +4,11 @@ import {APIGatewayProxyEventV2, APIGatewayProxyResultV2} from "aws-lambda";
 export async function handler(event: APIGatewayProxyEventV2, context: any): Promise<APIGatewayProxyResultV2> {
     // Check if the method is POST and body is not undefined
     const redirect = event.requestContext.http.method === 'POST' && event.body;
-
+    console.log('Event', event)
     if (redirect) {
         try{
             const body = Buffer.from(event.body as string, 'base64');
-
+            console.log('Body', body)
             return {
                 statusCode: 302,
                 headers: {
