@@ -33,9 +33,9 @@ export class SignupAppStack extends NestedStack {
             autoDeleteObjects: true,
         });
 
-        const subscribersTableName = 'SubscribersTable';
+        const subscribersTableName = process.env.SUBSCRIBERS_TABLE_NAME || 'SubscribersTable';
 
-        const subscribersTable = new Table(this, "SubscribersTable", {
+        const subscribersTable = new Table(this, subscribersTableName, {
             partitionKey: {
                 name: "customerIdentifier",
                 type: AttributeType.STRING,
@@ -80,56 +80,5 @@ export class SignupAppStack extends NestedStack {
             integration: templateLambdaIntegration,
         })
 
-
-        this.distribution = new Distribution(this, 'CloudfrontDistribution', {
-            enableLogging: true,
-            minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,
-            defaultBehavior: {
-                origin: new S3Origin(this.siteBucket),
-                viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-                cachePolicy: CachePolicy.CACHING_DISABLED,
-            },
-            defaultRootObject: 'index.html',
-        });
-
-        const execOptions: ExecSyncOptions = { stdio: 'inherit' };
-
-        const bundle = Source.asset('./client-app', {
-            bundling: {
-                command: [
-                    'sh',
-                    '-c',
-                    'echo "Docker build not supported."',
-                ],
-                image: DockerImage.fromRegistry('alpine'),
-                local: {
-                    /* istanbul ignore next */
-                    tryBundle(outputDir: string) {
-                        execSync(
-                            'cd client-app && yarn install && yarn build',
-                            execOptions,
-                        );
-
-                        fsExtra.copySync('./client-app/dist', outputDir, {
-                            ...execOptions,
-                            // @ts-ignore
-                            recursive: true,
-                        });
-                        return true;
-                    },
-                },
-            },
-        });
-
-        const config = {
-           apiUrl: httpApi.url,
-        };
-
-        new BucketDeployment(this, 'DeployBucket', {
-            sources: [bundle, Source.jsonData('config.json', config)],
-            destinationBucket: this.siteBucket,
-            distribution: this.distribution,
-            distributionPaths: ['/*'],
-        });
     }
 }
