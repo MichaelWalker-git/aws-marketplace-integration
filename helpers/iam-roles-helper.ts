@@ -1,5 +1,6 @@
 import {Construct} from "constructs";
 import * as cdk from 'aws-cdk-lib';
+import {Table} from "aws-cdk-lib/aws-dynamodb";
 
 export function createIAMRoleWithBasicExecutionPolicy(
     cdkStack: Construct,
@@ -46,6 +47,40 @@ export function getRedirectLambdaRole(scope: Construct) {
             ],
             resources: ["*"]
         }
+    ]);
+    return role;
+}
+
+export function getRegisterNewSubscriberLambdaRole(scope: Construct, table: Table,) {
+    const role = createIAMRoleWithBasicExecutionPolicy(scope, 'RegisterNewSubscriberLambdaRole', 'Role used by the register-new-subscriber function');
+    addRolePolicies(role, [
+        {
+            actions: [
+                "ec2:DescribeInstances",
+                "ec2:CreateNetworkInterface",
+                "ec2:AttachNetworkInterface",
+                "ec2:DescribeNetworkInterfaces",
+                "autoscaling:CompleteLifecycleAction",
+                "ec2:DeleteNetworkInterface"
+            ],
+            resources: ["*"]
+        },
+        {
+            actions: [
+                "aws-marketplace:Unsubscribe",
+                "aws-marketplace:ViewSubscriptions",
+                "aws-marketplace:Subscribe",
+                "aws-marketplace:ResolveCustomer",
+                "aws-marketplace:BatchMeterUsage",
+                "aws-marketplace:GetEntitlements"
+
+            ],
+            resources: ["*"]
+        },
+        {
+            actions: ['dynamodb:PutItem', 'dynamodb:Query', 'dynamodb:GetItem', 'dynamodb:UpdateItem'],
+            resources: [table.tableArn],
+        },
     ]);
     return role;
 }

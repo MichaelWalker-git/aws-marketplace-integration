@@ -5,15 +5,28 @@ import {stringValidation} from "../../utils/validation.ts";
 import  { type Value } from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
 import FormPhoneInput from "../FormPhoneInput/FormPhoneInput.tsx";
+import {Config} from "../../types/config.ts";
+
+const config = await fetch('./config.json').then((response) => response.json())
+    .catch(() => ({ error: 'Could not load config' })) as Config;
 
 
 export default function SignUp() {
 
-    const onSubmit = (values: SignUpForm, {setSubmitting}: { setSubmitting: (isSubmitting: boolean) => void }) => {
+    const onSubmit = async (values: SignUpForm, {setSubmitting}: { setSubmitting: (isSubmitting: boolean) => void }) => {
         const params = new URLSearchParams(window.location.search)
         const token = params.get('x-amzn-marketplace-token')
         // TODO: Send to server
-        console.log('values', values, token)
+        console.log('values', values, token, config.apiUrl)
+        await fetch(`${config.apiUrl}/register`, {
+            method: "POST",
+            body: JSON.stringify({
+                regToken: token,
+                contactPerson: values.name,
+                contactPhone: values.phone,
+                contactEmail: values.email
+            })
+        })
         setSubmitting(false);
     }
 
