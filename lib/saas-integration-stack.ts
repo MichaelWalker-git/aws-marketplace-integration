@@ -1,44 +1,21 @@
-import { Stack, StackProps } from 'aws-cdk-lib';
+import {CfnOutput, Stack, StackProps} from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import {NodejsFunction} from "aws-cdk-lib/aws-lambda-nodejs";
-import {Runtime} from "aws-cdk-lib/aws-lambda";
-import { join } from 'path';
-import {CorsHttpMethod, HttpApi, HttpMethod} from "aws-cdk-lib/aws-apigatewayv2";
-import {HttpLambdaIntegration} from "aws-cdk-lib/aws-apigatewayv2-integrations";
-import {getRedirectLambdaRole} from "../helpers/iam-roles-helper";
+import {MainApiStack} from "./main-api";
+import {SignupAppStack} from "./signup-app";
 
 export class SaasIntegrationStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    const myLambdaFilePath = join(__dirname, "..", "lambda", "edge-redirect.ts");
+    const signupApp = new SignupAppStack(this, "SignupAppStack")
 
-   const role = getRedirectLambdaRole(this);
-
-    const edgeRedirectLambda = new NodejsFunction(this, "EdgeRedirect", {
-      runtime: Runtime.NODEJS_18_X,
-      handler: "handler",
-      functionName: "edge-redirect",
-      entry: myLambdaFilePath,
-      role
+    const mainApi = new MainApiStack(this, "MainApiStack", {
+      signupApiUrl: signupApp.distribution.distributionDomainName
     });
 
-    const httpApi = new HttpApi(this, "MainApi", {
-      apiName: "My API",
-      corsPreflight: {
-        allowMethods: [
-          CorsHttpMethod.POST,
-        ],
-        allowOrigins: ["*"],
-      },
-    });
 
-    const templateLambdaIntegration = new HttpLambdaIntegration('TemplateIntegration', edgeRedirectLambda);
+    new CfnOutput(this, 'mainApi', {value: mainApi.httpApi.url || ''});
 
-    httpApi.addRoutes({
-      path: '/',
-      methods: [HttpMethod.POST],
-      integration: templateLambdaIntegration,
-    })
-  };
+    new CfnOutput(this, 'signupApi', {value: signupApp.distribution.distributionDomainName || ''});
+  }
 }
