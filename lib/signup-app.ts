@@ -1,16 +1,6 @@
-import {DockerImage, NestedStack, RemovalPolicy, Stack, StackProps} from "aws-cdk-lib";
+import {NestedStack, RemovalPolicy, StackProps} from "aws-cdk-lib";
 import {Construct} from "constructs";
 import {Bucket} from "aws-cdk-lib/aws-s3";
-import {
-    CachePolicy,
-    Distribution,
-    SecurityPolicyProtocol,
-    ViewerProtocolPolicy
-} from "aws-cdk-lib/aws-cloudfront";
-import {S3Origin} from "aws-cdk-lib/aws-cloudfront-origins";
-import {execSync, ExecSyncOptions} from "child_process";
-import {BucketDeployment, Source} from "aws-cdk-lib/aws-s3-deployment";
-import * as fsExtra from 'fs-extra';
 import {Runtime} from "aws-cdk-lib/aws-lambda";
 import {NodejsFunction} from "aws-cdk-lib/aws-lambda-nodejs";
 import {join} from "path";
@@ -21,17 +11,10 @@ import {AttributeType, BillingMode, StreamViewType, Table} from "aws-cdk-lib/aws
 
 
 export class SignupAppStack extends NestedStack {
-    public readonly siteBucket: Bucket;
-    public readonly distribution: Distribution;
+    public readonly httpApi: HttpApi;
 
     constructor(scope: Construct, id: string, props?: StackProps) {
         super(scope, id, props);
-
-        this.siteBucket = new Bucket(this, 'signupSiteBucket', {
-            publicReadAccess: false,
-            removalPolicy: RemovalPolicy.DESTROY,
-            autoDeleteObjects: true,
-        });
 
         const subscribersTableName = process.env.SUBSCRIBERS_TABLE_NAME || 'SubscribersTable';
 
@@ -66,9 +49,17 @@ export class SignupAppStack extends NestedStack {
             apiName: "RegisterApi",
             corsPreflight: {
                 allowMethods: [
-                    CorsHttpMethod.POST,
+                    CorsHttpMethod.POST, CorsHttpMethod.OPTIONS
                 ],
                 allowOrigins: ["*"],
+                allowHeaders: [
+                    'Content-Type',
+                    'X-Amz-Date',
+                    'Authorization',
+                    'X-Api-Key',
+                    'X-Amz-Security-Token',
+                    'Domain-Name',
+                ],
             },
         });
 
@@ -79,6 +70,8 @@ export class SignupAppStack extends NestedStack {
             methods: [HttpMethod.POST],
             integration: templateLambdaIntegration,
         })
+
+        this.httpApi = httpApi;
 
     }
 }

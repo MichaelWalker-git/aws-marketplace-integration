@@ -5,7 +5,7 @@ import {DynamoDB} from "@aws-sdk/client-dynamodb";
 const marketplacemetering = new MarketplaceMetering({ apiVersion: '2016-01-14', region: 'us-east-2' });
 const dynamodb = new DynamoDB({ apiVersion: '2012-08-10', region: 'us-east-2' });
 
-const { SUBSCRIBERS_TABLE } = process.env;
+const tableName = process.env.SUBSCRIBERS_TABLE;
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
     if (!event.body) {
@@ -16,16 +16,13 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     }
 
     try {
-
         const {
-            regToken,contactPerson, contactPhone, contactEmail,
+            regToken, firstName, lastName, email,
         } = JSON.parse(event.body);
 
-        console.log('event', event, contactPerson, contactPhone, contactEmail, regToken, SUBSCRIBERS_TABLE);
+        console.log('event', event, firstName, lastName, email, regToken, tableName);
 
- // TODO: connect with marketplace
-
-/*        // Call resolveCustomer to validate the subscriber
+        // Call resolveCustomer to validate the subscriber
         const resolveCustomerParams = {
             RegistrationToken: regToken,
         };
@@ -34,18 +31,22 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
             .resolveCustomer(resolveCustomerParams);
 
         // Store new subscriber data in dynamoDb
-        const { CustomerIdentifier, ProductCode, CustomerAWSAccountId } = resolveCustomerResponse;*/
+        const { CustomerIdentifier, ProductCode, CustomerAWSAccountId } = resolveCustomerResponse;
 
-        const { CustomerIdentifier, ProductCode, CustomerAWSAccountId } = marketplaceAnswerMock;
+        console.log('resolveCustomerResponse', resolveCustomerResponse);
+
+        if (!CustomerIdentifier || !ProductCode || !CustomerAWSAccountId) {
+            throw new Error("Marketplace did not return a complete customer record");
+        }
 
         const datetime = new Date().getTime().toString();
 
         const dynamoDbParams = {
-            TableName: SUBSCRIBERS_TABLE,
+            TableName: tableName,
             Item: {
-                contactPerson: { S: contactPerson },
-                contactPhone: { S: contactPhone },
-                contactEmail: { S: contactEmail },
+                firstName: { S: firstName },
+                lastName: { S: lastName },
+                email: { S: email },
                 customerIdentifier: { S: CustomerIdentifier },
                 productCode: { S: ProductCode },
                 customerAWSAccountID: { S: CustomerAWSAccountId },
@@ -67,10 +68,4 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
         }
     }
 
-}
-
-const marketplaceAnswerMock = {
-    CustomerIdentifier: "123456789012",
-    ProductCode: "testCode",
-    CustomerAWSAccountId: "123456789012",
 }

@@ -12,7 +12,7 @@ export async function handler(event: APIGatewayProxyEventV2, context: any): Prom
             return {
                 statusCode: 302,
                 headers: {
-                    Location: `https://${process.env.SIGNUP_API_URL}/?${body}`,
+                    Location: `${process.env.SIGNUP_API_URL}/?${body}`,
                 },
                 body: '',
             };
