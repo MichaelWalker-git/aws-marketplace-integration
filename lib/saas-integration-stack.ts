@@ -7,13 +7,15 @@ export class SaasIntegrationStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    // new SignupAppStack(this, "SignupAppStack")
+   const signupApp = new SignupAppStack(this, "SignupAppStack")
 
     const mainApi = new MainApiStack(this, "MainApiStack", {
       signupApiUrl: process.env.SIGNUP_API_URL || ''   });
 
 
     new CfnOutput(this, 'mainApi', {value: mainApi.httpApi.url || ''});
+
+    new CfnOutput(this, 'signupApi', {value: signupApp.httpApi.url || ''});
 
   }
 }
