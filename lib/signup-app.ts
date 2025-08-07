@@ -8,6 +8,7 @@ import { getRegisterNewSubscriberLambdaRole} from "../helpers/iam-roles-helper";
 import {CorsHttpMethod, HttpApi, HttpMethod} from "aws-cdk-lib/aws-apigatewayv2";
 import {HttpLambdaIntegration} from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import {AttributeType, BillingMode, StreamViewType, Table} from "aws-cdk-lib/aws-dynamodb";
+import {getResourceId} from "../helpers/common";
 
 
 export class SignupAppStack extends NestedStack {
@@ -16,7 +17,7 @@ export class SignupAppStack extends NestedStack {
     constructor(scope: Construct, id: string, props?: StackProps) {
         super(scope, id, props);
 
-        const subscribersTableName = process.env.SUBSCRIBERS_TABLE_NAME || 'SubscribersTable';
+        const subscribersTableName = process.env.SUBSCRIBERS_TABLE_NAME ||  getResourceId('SubscribersTable');
 
         const subscribersTable = new Table(this, subscribersTableName, {
             partitionKey: {
@@ -33,7 +34,7 @@ export class SignupAppStack extends NestedStack {
 
         const role = getRegisterNewSubscriberLambdaRole(this, subscribersTable);
 
-        const registerLambda = new NodejsFunction(this, "RegisterLambda", {
+        const registerLambda = new NodejsFunction(this, getResourceId("RegisterLambda"), {
             runtime: Runtime.NODEJS_18_X,
             handler: "handler",
             functionName: "RegisterLambda",
@@ -63,7 +64,7 @@ export class SignupAppStack extends NestedStack {
             },
         });
 
-        const templateLambdaIntegration = new HttpLambdaIntegration('TemplateIntegration', registerLambda);
+        const templateLambdaIntegration = new HttpLambdaIntegration(getResourceId("TemplateIntegration"), registerLambda);
 
         httpApi.addRoutes({
             path: '/register',

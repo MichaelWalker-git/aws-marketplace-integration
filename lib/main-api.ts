@@ -1,3 +1,5 @@
+import { config } from 'dotenv';
+config();
 import {NestedStack, Stack, StackProps} from "aws-cdk-lib";
 import {Construct} from "constructs";
 import {join} from "path";
@@ -6,9 +8,10 @@ import {NodejsFunction} from "aws-cdk-lib/aws-lambda-nodejs";
 import {Runtime} from "aws-cdk-lib/aws-lambda";
 import {CorsHttpMethod, HttpApi, HttpMethod} from "aws-cdk-lib/aws-apigatewayv2";
 import {HttpLambdaIntegration} from "aws-cdk-lib/aws-apigatewayv2-integrations";
-import { config } from 'dotenv';
+import {MeteringStack} from "./metering";
+import {getResourceId} from "../helpers/common";
 
-config();
+
 
 interface MainApiStackProps extends StackProps {
     signupApiUrl: string
@@ -24,7 +27,7 @@ export class MainApiStack extends NestedStack {
 
         const role = getRedirectLambdaRole(this);
 
-        const edgeRedirectLambda = new NodejsFunction(this, "EdgeRedirect", {
+        const edgeRedirectLambda = new NodejsFunction(this, getResourceId("EdgeRedirect"), {
             runtime: Runtime.NODEJS_18_X,
             handler: "handler",
             functionName: "edge-redirect",
@@ -35,7 +38,7 @@ export class MainApiStack extends NestedStack {
             }
         });
 
-        const httpApi = new HttpApi(this, "MainApi", {
+        const httpApi = new HttpApi(this, getResourceId("MainApi"), {
             apiName: "MainApi",
             corsPreflight: {
                 allowMethods: [
@@ -45,7 +48,7 @@ export class MainApiStack extends NestedStack {
             },
         });
 
-        const templateLambdaIntegration = new HttpLambdaIntegration('TemplateIntegration', edgeRedirectLambda);
+        const templateLambdaIntegration = new HttpLambdaIntegration(getResourceId("TemplateIntegration"), edgeRedirectLambda);
 
         httpApi.addRoutes({
             path: '/',
@@ -54,6 +57,8 @@ export class MainApiStack extends NestedStack {
         })
 
         this.httpApi = httpApi;
+
+        new MeteringStack(this, getResourceId("MeteringStack"))
     };
 
 }

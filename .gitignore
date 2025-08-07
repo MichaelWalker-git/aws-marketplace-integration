@@ -134,3 +134,4 @@ dist
 /backend-app/cdk-dev.out/
 
 local-docs/
+/cdk.out/

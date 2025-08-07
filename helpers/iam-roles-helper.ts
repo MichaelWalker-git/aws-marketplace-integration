@@ -1,6 +1,7 @@
 import {Construct} from "constructs";
 import * as cdk from 'aws-cdk-lib';
 import {Table} from "aws-cdk-lib/aws-dynamodb";
+import {Queue} from "aws-cdk-lib/aws-sqs";
 
 export function createIAMRoleWithBasicExecutionPolicy(
     cdkStack: Construct,
@@ -82,6 +83,119 @@ export function getRegisterNewSubscriberLambdaRole(scope: Construct, table: Tabl
             resources: [table.tableArn],
         },
     ]);
+    return role;
+}
+
+/**
+ * Creates IAM role for the hourly metering collection Lambda
+ * This Lambda queries DynamoDB for pending records and sends them to SQS
+ */
+export function getHourlyMeteringLambdaRole(
+    scope: Construct,
+    meteringTable: Table,
+    meteringQueue: Queue
+) {
+    const role = createIAMRoleWithBasicExecutionPolicy(
+        scope,
+        'HourlyMeteringLambdaRole',
+        'Role used by the hourly metering collection Lambda function'
+    );
+
+    addRolePolicies(role, [
+        // DynamoDB permissions for reading metering records
+        {
+            actions: [
+                'dynamodb:Query',
+                'dynamodb:GetItem',
+                'dynamodb:Scan',
+                'dynamodb:BatchGetItem'
+            ],
+            resources: [
+                meteringTable.tableArn,
+                `${meteringTable.tableArn}/index/*`, // Allow GSI access
+            ],
+        },
+        // SQS permissions for sending messages to the metering queue
+        {
+            actions: [
+                'sqs:SendMessage',
+                'sqs:GetQueueAttributes'
+            ],
+            resources: [meteringQueue.queueArn],
+        },
+        // CloudWatch permissions for enhanced monitoring (optional but recommended)
+        {
+            actions: [
+                'cloudwatch:PutMetricData'
+            ],
+            resources: ['*'],
+        },
+        // X-Ray tracing permissions (if tracing is enabled)
+        {
+            actions: [
+                'xray:PutTraceSegments',
+                'xray:PutTelemetryRecords'
+            ],
+            resources: ['*'],
+        }
+    ]);
+
+    return role;
+}
+
+/**
+ * Creates IAM role for the metering processor Lambda
+ * This Lambda processes SQS messages and sends usage reports to AWS Marketplace
+ */
+export function getMeteringProcessorLambdaRole(
+    scope: Construct,
+    meteringTable: Table,
+    meteringQueue: Queue,
+    meteringDLQ: Queue
+) {
+    const role = createIAMRoleWithBasicExecutionPolicy(
+        scope,
+        'MeteringProcessorLambdaRole',
+        'Role used by the metering processor Lambda function'
+    );
+
+    addRolePolicies(role, [
+        // DynamoDB permissions for updating processed records
+        {
+            actions: [
+                'dynamodb:UpdateItem',
+                'dynamodb:DeleteItem',
+                'dynamodb:GetItem'
+            ],
+            resources: [meteringTable.tableArn],
+        },
+        // SQS permissions for processing messages
+        {
+            actions: [
+                'sqs:ReceiveMessage',
+                'sqs:DeleteMessage',
+                'sqs:GetQueueAttributes'
+            ],
+            resources: [meteringQueue.queueArn, meteringDLQ.queueArn],
+        },
+        // AWS Marketplace Metering API permissions
+        {
+            actions: [
+                'aws-marketplace:MeterUsage',
+                'aws-marketplace:BatchMeterUsage',
+                'aws-marketplace:ResolveCustomer'
+            ],
+            resources: ['*'], // AWS Marketplace API requires * resource
+        },
+        // CloudWatch permissions for enhanced monitoring
+        {
+            actions: [
+                'cloudwatch:PutMetricData'
+            ],
+            resources: ['*'],
+        },
+    ]);
+
     return role;
 }
 
