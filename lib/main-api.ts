@@ -58,7 +58,7 @@ export class MainApiStack extends NestedStack {
 
         this.httpApi = httpApi;
 
-        new MeteringStack(this, getResourceId("MeteringStack"))
+       new MeteringStack(this, getResourceId("MeteringStack"))
     };
 
 }

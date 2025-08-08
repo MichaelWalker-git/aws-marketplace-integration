@@ -6,6 +6,6 @@ import {getResourceId} from "../helpers/common";
 const app = new cdk.App();
 new SaasIntegrationStack(app, getResourceId("MarketplaceIntegration"), {
     env: {
-        region: 'us-east-2'
+        region: 'us-east-1'
     }
 });

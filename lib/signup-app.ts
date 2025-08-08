@@ -1,6 +1,5 @@
 import {NestedStack, RemovalPolicy, StackProps} from "aws-cdk-lib";
 import {Construct} from "constructs";
-import {Bucket} from "aws-cdk-lib/aws-s3";
 import {Runtime} from "aws-cdk-lib/aws-lambda";
 import {NodejsFunction} from "aws-cdk-lib/aws-lambda-nodejs";
 import {join} from "path";
@@ -10,6 +9,7 @@ import {HttpLambdaIntegration} from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import {AttributeType, BillingMode, StreamViewType, Table} from "aws-cdk-lib/aws-dynamodb";
 import {getResourceId} from "../helpers/common";
 
+const region = process.env.REGION || 'us-east-1';
 
 export class SignupAppStack extends NestedStack {
     public readonly httpApi: HttpApi;
@@ -37,11 +37,30 @@ export class SignupAppStack extends NestedStack {
         const registerLambda = new NodejsFunction(this, getResourceId("RegisterLambda"), {
             runtime: Runtime.NODEJS_18_X,
             handler: "handler",
-            functionName: "RegisterLambda",
+            functionName: getResourceId("RegisterLambda"),
             entry: registerLambdaFilePath,
             role,
+            bundling: {
+                commandHooks: {
+                    beforeBundling(inputDir: string, outputDir: string): string[] {
+                        return [];
+                    },
+                    beforeInstall(inputDir: string, outputDir: string): string[] {
+                        return [];
+                    },
+                    afterBundling(inputDir: string, outputDir: string): string[] {
+                        return [
+                            `cp ${inputDir}/installation-instructions.md ${outputDir}/installation-instructions.md`,
+                        ];
+                    },
+                },
+            },
             environment: {
-                SUBSCRIBERS_TABLE: subscribersTableName
+                SUBSCRIBERS_TABLE: subscribersTableName,
+                REGION: region,
+                USAGE_TABLE: getResourceId("MeteringRecordsTable"),
+                SENDER_EMAIL: process.env.SENDER_EMAIL || '',
+                AWS_ACCOUNT_ID: process.env.AWS_ACCOUNT_ID || '',
             }
         });
 

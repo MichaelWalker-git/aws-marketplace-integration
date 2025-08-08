@@ -2,7 +2,6 @@ import {Duration, NestedStack} from "aws-cdk-lib";
 import {Construct} from "constructs";
 import {AttributeType, BillingMode, ProjectionType, Table} from "aws-cdk-lib/aws-dynamodb";
 import {Queue} from "aws-cdk-lib/aws-sqs";
-import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
@@ -11,8 +10,7 @@ import {getResourceId} from "../helpers/common";
 import {join} from "path";
 import {
     getHourlyMeteringLambdaRole,
-    getMeteringProcessorLambdaRole,
-    getRegisterNewSubscriberLambdaRole
+    getMeteringProcessorLambdaRole
 } from "../helpers/iam-roles-helper";
 import {NodejsFunction} from "aws-cdk-lib/aws-lambda-nodejs";
 import {Runtime} from "aws-cdk-lib/aws-lambda";
@@ -24,10 +22,8 @@ export class MeteringStack extends NestedStack {
     constructor(scope: Construct, id: string) {
         super(scope, id);
 
-        const meteringRecordsTableName = `${APP_NAME}-MeteringRecordsTable`;
-
         const meteringRecordsTable = new Table(this, getResourceId("MeteringRecordsTable"), {
-            tableName: meteringRecordsTableName,
+            tableName: getResourceId("MeteringRecordsTable"),
             partitionKey: {
                 name: "customerIdentifier",
                 type: AttributeType.STRING,
@@ -83,6 +79,7 @@ export class MeteringStack extends NestedStack {
             environment: {
                 SQSMeteringRecordsUrl: sqsMeteringRecordsQueue.queueUrl,
                 AWSMarketplaceMeteringRecordsTableName: meteringRecordsTable.tableName,
+                REGION: process.env.REGION || '',
             },
         });
 
@@ -110,6 +107,7 @@ export class MeteringStack extends NestedStack {
             environment: {
                 AWSMarketplaceMeteringRecordsTableName: meteringRecordsTable.tableName,
                 AWS_MARKETPLACE_PRODUCT_CODE: process.env.AWS_MARKETPLACE_PRODUCT_CODE || '',
+                REGION: process.env.REGION || '',
             },
             reservedConcurrentExecutions: 10,
         });

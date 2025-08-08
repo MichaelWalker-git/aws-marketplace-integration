@@ -82,6 +82,20 @@ export function getRegisterNewSubscriberLambdaRole(scope: Construct, table: Tabl
             actions: ['dynamodb:PutItem', 'dynamodb:Query', 'dynamodb:GetItem', 'dynamodb:UpdateItem'],
             resources: [table.tableArn],
         },
+        {
+            actions: ["iam:CreateRole",
+                "iam:CreatePolicy",
+                "iam:AttachRolePolicy",
+                "iam:TagRole"
+            ],
+            resources: ["arn:aws:iam::*:role/UsageReportingRole-*",
+                "arn:aws:iam::*:policy/UsageReportingRole-*-Policy"]
+        },
+        {
+            actions: ["ses:SendEmail",
+                "ses:SendRawEmail"],
+            resources: ["*"]
+        }
     ]);
     return role;
 }

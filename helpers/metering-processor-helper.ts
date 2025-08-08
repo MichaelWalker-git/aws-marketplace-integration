@@ -18,13 +18,13 @@ export interface ProcessingResult {
 }
 
 const meteringClient = new MarketplaceMeteringClient({
-    region: process.env.AWS_REGION,
+    region: process.env.REGION,
     maxAttempts: 3,
     retryMode: 'adaptive'
 });
 
 const dynamoDBClient = new DynamoDBClient({
-    region: process.env.AWS_REGION,
+    region: process.env.REGION,
     maxAttempts: 3,
     retryMode: 'adaptive'
 });
@@ -119,7 +119,7 @@ async function sendUsageRecord(
             Timestamp: new Date(record.timestamp),
             UsageDimension: record.dimension!,
             UsageQuantity: record.quantity!,
-            DryRun: false, // Set to true for testing
+            DryRun: true, // Set to true for testing
             UsageAllocations: [
                 {
                     AllocatedUsageQuantity: record.quantity!,
@@ -140,6 +140,8 @@ async function sendUsageRecord(
             timestamp: record.timestamp,
             productCode: PRODUCT_CODE
         });
+
+        console.log('meteringRequest', meteringRequest);
 
         const command = new MeterUsageCommand(meteringRequest);
         const response = await meteringClient.send(command);
@@ -184,6 +186,58 @@ async function sendUsageRecord(
         throw error;
     }
 }
+
+import {
+    BatchMeterUsageCommand,
+    UsageRecord,
+    BatchMeterUsageRequest,
+} from "@aws-sdk/client-marketplace-metering";
+
+async function sendBatchUsageRecord(
+    record: MeteringMessageBody,
+    retryCount = 0
+): Promise<void> {
+    try {
+        const usageRecord: UsageRecord = {
+            CustomerIdentifier: record.customerIdentifier,
+            Dimension: record.dimension!,
+            Quantity: record.quantity,
+            Timestamp: new Date(record.timestamp),
+        };
+
+        const batchRequest: BatchMeterUsageRequest = {
+            ProductCode: PRODUCT_CODE!,
+            UsageRecords: [usageRecord], // you can add up to 25
+        };
+
+        console.log("Sending batch usage to AWS Marketplace:", batchRequest);
+
+        const command = new BatchMeterUsageCommand(batchRequest);
+        const response = await meteringClient.send(command);
+
+        if (response.Results?.length) {
+            console.log("Batch metering result:", response.Results[0]);
+        }
+
+        if (response.UnprocessedRecords?.length) {
+            console.warn("Unprocessed usage records:", response.UnprocessedRecords);
+        }
+
+    } catch (error: any) {
+        console.error("Error sending batch usage:", error);
+
+        // Retry logic if needed
+        if (error.name === "ThrottlingException" && retryCount < MAX_RETRIES) {
+            const delay = RETRY_DELAY_MS * Math.pow(2, retryCount);
+            console.log(`Throttling detected, retrying in ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return sendBatchUsageRecord(record, retryCount + 1);
+        }
+
+        throw error;
+    }
+}
+
 
 /**
  * Updates the DynamoDB record to mark as processed or handles deletion
@@ -280,6 +334,7 @@ export async function processMessage(sqsRecord: SQSRecord): Promise<{
 
         // Send usage record to AWS Marketplace
         await sendUsageRecord(meteringRecord);
+        // await sendBatchUsageRecord(meteringRecord);
 
         // Update the DynamoDB record
         await updateMeteringRecord(meteringRecord, true);
