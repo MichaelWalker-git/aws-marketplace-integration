@@ -1,6 +1,6 @@
-
-// Initialize AWS SDK clients outside the handler for connection reuse
-import {MarketplaceMeteringClient, MeterUsageCommand, MeterUsageRequest} from "@aws-sdk/client-marketplace-metering";
+import {MarketplaceMeteringClient,     BatchMeterUsageCommand,
+    UsageRecord,
+    BatchMeterUsageRequest,} from "@aws-sdk/client-marketplace-metering";
 import {DynamoDBClient} from "@aws-sdk/client-dynamodb";
 import {DynamoDBDocumentClient, UpdateCommand} from "@aws-sdk/lib-dynamodb";
 import {SQSRecord} from "aws-lambda";
@@ -48,7 +48,7 @@ const PRODUCT_CODE = process.env.AWS_MARKETPLACE_PRODUCT_CODE;
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
 
-interface MeteringMessageBody {
+export interface MeteringMessageBody {
     customerIdentifier: string;
     timestamp: number;
     dimension?: string;
@@ -63,6 +63,12 @@ interface MeteringMessageBody {
     };
 }
 
+export type EnrichedUsage = {
+    key: string; // correlation key
+    messageId: string;
+    body: MeteringMessageBody;
+    usage: UsageRecord;
+};
 
 /**
  * Validates required environment variables
@@ -90,7 +96,7 @@ export function parseMessageBody(body: string): MeteringMessageBody {
 /**
  * Validates metering record data
  */
-function validateMeteringRecord(record: MeteringMessageBody): void {
+export function validateMeteringRecord(record: MeteringMessageBody): void {
     if (!record.customerIdentifier) {
         throw new Error('customerIdentifier is required');
     }
@@ -105,93 +111,9 @@ function validateMeteringRecord(record: MeteringMessageBody): void {
     }
 }
 
-/**
- * Sends usage record to AWS Marketplace Metering API with retries
- */
-async function sendUsageRecord(
-    record: MeteringMessageBody,
-    retryCount = 0
-): Promise<void> {
-    try {
-        // Create the metering request
-        const meteringRequest: MeterUsageRequest = {
-            ProductCode: PRODUCT_CODE!,
-            Timestamp: new Date(record.timestamp),
-            UsageDimension: record.dimension!,
-            UsageQuantity: record.quantity!,
-            DryRun: true, // Set to true for testing
-            UsageAllocations: [
-                {
-                    AllocatedUsageQuantity: record.quantity!,
-                    Tags: [
-                        {
-                            Key: 'CustomerIdentifier',
-                            Value: record.customerIdentifier
-                        }
-                    ]
-                }
-            ]
-        };
-
-        console.log('Sending usage record to AWS Marketplace:', {
-            customerIdentifier: record.customerIdentifier,
-            dimension: record.dimension,
-            quantity: record.quantity,
-            timestamp: record.timestamp,
-            productCode: PRODUCT_CODE
-        });
-
-        console.log('meteringRequest', meteringRequest);
-
-        const command = new MeterUsageCommand(meteringRequest);
-        const response = await meteringClient.send(command);
-
-        console.log('Successfully sent usage record to AWS Marketplace:', {
-            customerIdentifier: record.customerIdentifier,
-            meteringRecordId: response.MeteringRecordId,
-        });
-
-    } catch (error: any) {
-        // Handle specific AWS Marketplace errors
-        if (error.name === 'ThrottlingException' && retryCount < MAX_RETRIES) {
-            const delay = RETRY_DELAY_MS * Math.pow(2, retryCount);
-            console.log(`Throttling detected, retrying in ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
-
-            await new Promise(resolve => setTimeout(resolve, delay));
-            return sendUsageRecord(record, retryCount + 1);
-        }
-
-        if (error.name === 'InvalidUsageDimensionException') {
-            console.error('Invalid usage dimension:', record.dimension);
-            throw new Error(`Invalid usage dimension: ${record.dimension}`);
-        }
-
-        if (error.name === 'InvalidProductCodeException') {
-            console.error('Invalid product code:', PRODUCT_CODE);
-            throw new Error(`Invalid product code: ${PRODUCT_CODE}`);
-        }
-
-        if (error.name === 'TimestampOutOfBoundsException') {
-            console.error('Timestamp out of bounds:', record.timestamp);
-            throw new Error(`Timestamp out of bounds: ${record.timestamp}`);
-        }
-
-        if (error.name === 'DuplicateRequestException') {
-            // This is actually OK - AWS already processed this request
-            console.warn('Duplicate request - AWS Marketplace already processed this usage record');
-            return;
-        }
-
-        console.error('Error sending usage record to AWS Marketplace:', error);
-        throw error;
-    }
+export function correlationKey(u: UsageRecord) {
+    return `${u.CustomerIdentifier}::${u.Dimension}::${u.Timestamp?.toISOString()}`;
 }
-
-import {
-    BatchMeterUsageCommand,
-    UsageRecord,
-    BatchMeterUsageRequest,
-} from "@aws-sdk/client-marketplace-metering";
 
 async function sendBatchUsageRecord(
     record: MeteringMessageBody,
@@ -333,8 +255,8 @@ export async function processMessage(sqsRecord: SQSRecord): Promise<{
         validateMeteringRecord(meteringRecord);
 
         // Send usage record to AWS Marketplace
-        await sendUsageRecord(meteringRecord);
-        // await sendBatchUsageRecord(meteringRecord);
+        // await sendUsageRecord(meteringRecord);
+        await sendBatchUsageRecord(meteringRecord);
 
         // Update the DynamoDB record
         await updateMeteringRecord(meteringRecord, true);
@@ -359,4 +281,72 @@ export async function processMessage(sqsRecord: SQSRecord): Promise<{
             error: errorMessage
         };
     }
+}
+
+export async function updateDdbFailure(record: MeteringMessageBody, errorMessage: string) {
+    await dynamoDBClient.send(
+        new UpdateCommand({
+            TableName: DYNAMODB_TABLE_NAME,
+            Key: {
+                customerIdentifier: record.originalRecord.customerIdentifier,
+                create_timestamp: record.originalRecord.create_timestamp,
+            },
+            UpdateExpression:
+                'SET #status = :status, error_message = :err, last_attempt = :la ADD retry_count :inc',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: {
+                ':status': 'failed',
+                ':err': errorMessage || 'Unknown error',
+                ':la': Date.now(),
+                ':inc': 1,
+            },
+            ConditionExpression: 'attribute_exists(customerIdentifier)',
+        })
+    );
+}
+
+export function chunk<T>(arr: T[], size: number): T[][] {
+    const out: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+}
+
+async function sleep(ms: number) {
+    return new Promise((r) => setTimeout(r, ms));
+}
+
+export async function sendBatchWithRetry(usageRecords: UsageRecord[], attempt = 0) {
+    try {
+        const req: BatchMeterUsageRequest = { ProductCode: PRODUCT_CODE, UsageRecords: usageRecords };
+        return await meteringClient.send(new BatchMeterUsageCommand(req));
+    } catch (e: any) {
+        if (e?.name === 'ThrottlingException' && attempt < MAX_RETRIES) {
+            const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
+            console.log(`Throttled (attempt ${attempt + 1}/${MAX_RETRIES}). Retrying in ${delay}ms`);
+            await sleep(delay);
+            return sendBatchWithRetry(usageRecords, attempt + 1);
+        }
+        throw e;
+    }
+}
+
+export async function updateDdbSuccess(record: MeteringMessageBody) {
+    await dynamoDBClient.send(
+        new UpdateCommand({
+            TableName: DYNAMODB_TABLE_NAME,
+            Key: {
+                customerIdentifier: record.originalRecord.customerIdentifier,
+                create_timestamp: record.originalRecord.create_timestamp,
+            },
+            UpdateExpression:
+                'SET metering_pending = :processed, processed_timestamp = :ts, #status = :status',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: {
+                ':processed': 'false',
+                ':ts': Date.now(),
+                ':status': 'completed',
+            },
+            ConditionExpression: 'attribute_exists(customerIdentifier)',
+        })
+    );
 }

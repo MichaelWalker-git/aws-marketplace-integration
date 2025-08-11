@@ -1,87 +1,129 @@
-import { SQSEvent, SQSRecord, SQSHandler, Context } from 'aws-lambda';
+import { SQSEvent, SQSHandler, Context } from 'aws-lambda';
 import {
-    validateEnvironment,
     parseMessageBody,
-    ProcessingResult,
-    processMessage
+    EnrichedUsage,
+    validateMeteringRecord,
+    correlationKey,
+    MeteringMessageBody,
+    updateDdbFailure,
+    chunk,
+    sendBatchWithRetry, updateDdbSuccess
 } from "../helpers/metering-processor-helper";
+import {UsageRecord} from "@aws-sdk/client-marketplace-metering";
+
+const MAX_BATCH = 25;
+const RETRY_DELAY_MS = 1000;
+const MAX_RETRIES = 3;
 
 /**
  * Main handler function for SQS-triggered Lambda
  */
-export const handler: SQSHandler = async (
-    event: SQSEvent,
-    context: Context
-): Promise<void> => {
+export const handler: SQSHandler = async (event: SQSEvent, context: Context): Promise<void> => {
     console.log('Starting metering processor job', {
         requestId: context.awsRequestId,
         recordCount: event.Records.length,
-        remainingTimeInMillis: context.getRemainingTimeInMillis()
+        remainingTimeInMillis: context.getRemainingTimeInMillis(),
     });
 
-    try {
-        // Validate environment variables
-        validateEnvironment();
+    // 1) Parse & validate all messages up-front, building a single usage payload
+    const enriched: EnrichedUsage[] = [];
+    const preValidationErrors: Array<{ messageId: string; error: string }> = [];
 
-        const processingResult: ProcessingResult = {
-            totalProcessed: 0,
-            successCount: 0,
-            errorCount: 0,
-            errors: []
-        };
+    for (const rec of event.Records) {
+        try {
+            const body = parseMessageBody(rec.body);
+            validateMeteringRecord(body);
+            const usage: UsageRecord = {
+                CustomerIdentifier: body.customerIdentifier,
+                Dimension: body.dimension!,
+                Quantity: body.quantity,
+                Timestamp: new Date(body.timestamp),
+            };
+            enriched.push({key: correlationKey(usage), messageId: rec.messageId, body, usage});
+        } catch (err: any) {
+            preValidationErrors.push({messageId: rec.messageId, error: err?.message || String(err)});
+        }
+    }
 
-        // Process each SQS record
-        const processingPromises = event.Records.map(async (record) => {
-            const result = await processMessage(record);
+    // Mark validation failures in Dynamo and continue
+    for (const e of preValidationErrors) {
+        try {
+            const body: MeteringMessageBody = JSON.parse(
+                event.Records.find((r) => r.messageId === e.messageId)!.body
+            );
+            await updateDdbFailure(body, e.error);
+        } catch {
+            // if we can't parse / update, just log
+            console.error(`Could not update DDB for pre-validation failure: ${e.messageId}`, e);
+        }
+    }
 
-            processingResult.totalProcessed++;
+    if (enriched.length === 0) {
+        console.log('No valid usage records to send. Exiting.');
+        return;
+    }
 
-            if (result.success) {
-                processingResult.successCount++;
-            } else {
-                processingResult.errorCount++;
+    // 2) Send in one go (chunked to API limit 25) instead of per-message
+    const chunks = chunk(enriched, MAX_BATCH);
 
-                // Try to extract customer identifier for error tracking
-                let customerIdentifier: string | undefined;
-                try {
-                    const messageBody = parseMessageBody(record.body);
-                    customerIdentifier = messageBody.customerIdentifier;
-                } catch (e) {
-                    // Ignore parsing errors here
+    let totalSuccess = 0;
+    let totalFailed = 0;
+
+    for (const group of chunks) {
+        console.log(`Sending batch of ${group.length} usage records to AWS Marketplace`);
+        const resp = await sendBatchWithRetry(group.map((g) => g.usage));
+
+        console.log('Batch response:', resp);
+
+        // Build failure map from UnprocessedRecords
+        const failures = new Map<string, { code?: string; message?: string }>();
+        if (resp.UnprocessedRecords?.length) {
+            for (const f of resp.UnprocessedRecords as any[]) {
+                if (f.UsageRecord) {
+                    const key = correlationKey(f.UsageRecord);
+                    failures.set(key, { code: f.ErrorCode, message: f.ErrorMessage });
+                } else {
+                    console.warn("Unprocessed record without UsageRecord:", f);
                 }
-
-                processingResult.errors.push({
-                    messageId: record.messageId,
-                    error: result.error || 'Unknown error',
-                    customerIdentifier
-                });
             }
-        });
-
-        // Wait for all messages to be processed
-        await Promise.allSettled(processingPromises);
-
-        // Log final results
-        console.log('Metering processor job completed', {
-            totalProcessed: processingResult.totalProcessed,
-            successCount: processingResult.successCount,
-            errorCount: processingResult.errorCount,
-            executionTimeUsed: context.getRemainingTimeInMillis()
-        });
-
-        // Log individual errors
-        if (processingResult.errors.length > 0) {
-            console.error('Processing errors:', processingResult.errors);
+            console.warn('Unprocessed usage records:', resp.UnprocessedRecords);
         }
 
-        // For SQS processing, we typically don't throw here unless we want
-        // all messages to go to DLQ. Individual message failures are handled
-        // by the partial batch failure mechanism.
+        // Update DDB per record based on success/failure
+        for (const item of group) {
+            const fail = failures.get(item.key);
+            try {
+                if (fail) {
+                    totalFailed++;
+                    await updateDdbFailure(
+                        item.body,
+                        `${fail.code ?? 'Error'}: ${fail.message ?? 'Unprocessed'}`
+                    );
+                } else {
+                    totalSuccess++;
+                    await updateDdbSuccess(item.body);
+                }
+            } catch (e) {
+                // do not throw—preserve marketplace result; just log DDB issues
+                console.error('DynamoDB update error:', {
+                    messageId: item.messageId,
+                    error: (e as any)?.message || String(e),
+                });
+            }
+        }
 
-    } catch (error) {
-        console.error('Fatal error in metering processor job:', error);
-
-        // Re-throw to mark Lambda execution as failed
-        throw error;
+        // Optional: surface Results for debugging
+        if (resp.Results?.length) {
+            console.log('Batch results (sample):', resp.Results.slice(0, 3));
+        }
     }
-};
+
+    console.log('Metering processor job completed', {
+        totalParsed: event.Records.length,
+        validSent: enriched.length,
+        validationErrors: preValidationErrors.length,
+        successCount: totalSuccess,
+        failedCount: totalFailed,
+        executionTimeRemaining: context.getRemainingTimeInMillis(),
+    });
+}
