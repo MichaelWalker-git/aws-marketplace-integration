@@ -128,9 +128,9 @@ export class MeteringStack extends NestedStack {
 
 
         new events.Rule(this, 'Schedule', {
-            // TODO decreased for test
-            // schedule: events.Schedule.rate(Duration.hours(1)),
-            schedule: events.Schedule.rate(Duration.minutes(3)),
+            schedule: events.Schedule.rate(Duration.hours(1)),
+            // for test
+            //schedule: events.Schedule.rate(Duration.minutes(3)),
             targets: [new targets.LambdaFunction(hourlyLambda)],
             description: 'SaaS Metering',
             enabled: true,
