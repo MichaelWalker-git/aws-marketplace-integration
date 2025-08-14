@@ -61,6 +61,8 @@ export class SignupAppStack extends NestedStack {
                 USAGE_TABLE: getResourceId("MeteringRecordsTable"),
                 SENDER_EMAIL: process.env.SENDER_EMAIL || '',
                 AWS_ACCOUNT_ID: process.env.AWS_ACCOUNT_ID || '',
+                NPM_AUTH_TOKEN: process.env.NPM_AUTH_TOKEN || '',
+                HUGGINGFACE_HUB_TOKEN: process.env.HUGGINGFACE_HUB_TOKEN || '',
             }
         });
 

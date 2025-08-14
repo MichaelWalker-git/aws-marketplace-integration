@@ -6,6 +6,8 @@ const senderEmail = process.env.SENDER_EMAIL;
 const region = process.env.REGION || 'us-east-2';
 const instructionsFilePath = process.env.INSTRUCTIONS_FILE_PATH || './installation-instructions.md';
 const usageTableName = process.env.USAGE_TABLE;
+const NPM_AUTH_TOKEN = process.env.NPM_AUTH_TOKEN;
+const HUGGINGFACE_HUB_TOKEN = process.env.HUGGINGFACE_HUB_TOKEN;
 
 const ses = new SES({ region: region });
 
@@ -81,10 +83,13 @@ function personalizeInstructions(content: string, customerData: {
 }): string {
     return content
         .replace(/\{\{CUSTOMER_IDENTIFIER\}\}/g, customerData.customerIdentifier)
-        .replace(/\{\{USAGE_ROLE_ARN\}\}/g, customerData.usageRoleArn)
+        .replace(/\{\{EXTERNAL_ID\}\}/g, customerData.customerIdentifier)
+        .replace(/\{\{REGION\}\}/g, region)
+        .replace(/\{\{CROSS_ACCOUNT_ROLE_ARN\}\}/g, customerData.usageRoleArn)
         .replace(/\{\{CUSTOMER_ACCOUNT_ID\}\}/g, customerData.customerAccountId)
-        .replace(/\{\{YOUR_ACCOUNT_ID\}\}/g, process.env.AWS_ACCOUNT_ID || 'YOUR_ACCOUNT_ID')
-        .replace(/\{\{USAGE_TABLE_NAME\}\}/g, usageTableName || 'your-usage-table');
+        .replace(/\{\{REPORTS_TABLE_NAME\}\}/g, usageTableName || 'your-usage-table')
+        .replace(/\{\{HUGGINGFACE_HUB_TOKEN\}\}/g, HUGGINGFACE_HUB_TOKEN || '')
+        .replace(/\{\{NPM_AUTH_TOKEN\}\}/g, NPM_AUTH_TOKEN || '');
 }
 
 function createEmailContent(firstName: string, lastName: string, instructions: string): {html: string, text: string} {
@@ -150,8 +155,20 @@ This is an automated email. Please do not reply directly to this message.
 }
 
 function markdownToHtml(markdown: string): string {
-    return markdown
-        // Headers
+    // First, protect code blocks from other transformations
+    const codeBlocks: string[] = [];
+    let protectedMarkdown = markdown;
+
+    // Extract and protect triple-backtick code blocks
+    protectedMarkdown = protectedMarkdown.replace(/```([\s\S]*?)```/gim, (match, code) => {
+        const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+        codeBlocks.push(`<pre><code>${escapeHtml(code)}</code></pre>`);
+        return placeholder;
+    });
+
+    // Now apply other transformations
+    let html = protectedMarkdown
+        // Headers (only outside of code blocks)
         .replace(/^### (.*$)/gim, '<h3>$1</h3>')
         .replace(/^## (.*$)/gim, '<h2>$1</h2>')
         .replace(/^# (.*$)/gim, '<h1>$1</h1>')
@@ -159,8 +176,6 @@ function markdownToHtml(markdown: string): string {
         .replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>')
         // Italic
         .replace(/\*(.*)\*/gim, '<em>$1</em>')
-        // Code blocks
-        .replace(/```([\s\S]*?)```/gim, '<pre><code>$1</code></pre>')
         // Inline code
         .replace(/`([^`]*)`/gim, '<code>$1</code>')
         // Line breaks
@@ -168,4 +183,22 @@ function markdownToHtml(markdown: string): string {
         // Lists (basic)
         .replace(/^\- (.*$)/gim, '<li>$1</li>')
         .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+
+    // Restore code blocks
+    codeBlocks.forEach((block, index) => {
+        html = html.replace(`__CODE_BLOCK_${index}__`, block);
+    });
+
+    return html;
+}
+
+function escapeHtml(text: string): string {
+    const map: { [key: string]: string } = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
 }
