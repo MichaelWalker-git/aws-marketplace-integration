@@ -87,8 +87,8 @@ npx cdk bootstrap aws://$CDK_DEFAULT_ACCOUNT/$CDK_DEFAULT_REGION
 
 ```bash
 # Create project directory
-mkdir ai-document-processor-marketplace
-cd ai-document-processor-marketplace
+mkdir ai-document-processor
+cd ai-document-processor
 
 # Initialize CDK TypeScript project
 cdk init app --language=typescript
@@ -110,18 +110,17 @@ cat > .env << 'EOF'
 # ============================================
 # AWS CONFIGURATION (Required)
 # ============================================
-CDK_DEFAULT_ACCOUNT=YOUR_ACCOUNT_ID_HERE
+CDK_DEFAULT_ACCOUNT={{CUSTOMER_ACCOUNT_ID}}
 CDK_DEFAULT_REGION=us-east-1
 
 # ============================================
 # MARKETPLACE INTEGRATION (DO NOT MODIFY)
 # These values are provided by AWS Marketplace
 # ============================================
-CUSTOMER_IDENTIFIER=YOUR_CUSTOMER_ID_HERE
-CROSS_ACCOUNT_ROLE_ARN=arn:aws:iam::ACCOUNT:role/ROLE_NAME
-EXTERNAL_ID=YOUR_EXTERNAL_ID_HERE
-REPORTS_TABLE_NAME=YOUR_REPORTS_TABLE_HERE
-TARGET_REGION=YOUR_TARGET_REGION_HERE
+CUSTOMER_IDENTIFIER={{CUSTOMER_IDENTIFIER}}
+CROSS_ACCOUNT_ROLE_ARN={{CROSS_ACCOUNT_ROLE_ARN}}
+EXTERNAL_ID={{EXTERNAL_ID}}
+REPORTS_TABLE_NAME={{REPORTS_TABLE_NAME}}
 
 # ============================================
 # APPLICATION CONFIGURATION (Customizable)
@@ -142,11 +141,10 @@ ADMIN_GIVEN_NAME=Super
 CLIENT_URL=http://localhost:5173/
 
 # Hugging Face token (required for model access)
-HUGGINGFACE_HUB_TOKEN=YOUR_HF_TOKEN_HERE
+HUGGINGFACE_HUB_TOKEN={{HUGGINGFACE_HUB_TOKEN}}
 
 # Vendor information
 VENDOR_NAME=Horustech
-EOF
 ```
 
 #### Step 3: Update CDK Application Entry Point
