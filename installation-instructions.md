@@ -28,16 +28,14 @@ yarn add @miketran/ai-document-processor-cdk
 ### ⚡ Quick start (use the prebuilt stage)
 Create bin/app.ts:
 
-```typescript
+```
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
 import { config } from 'dotenv';
 // Pull .env (recommended for secrets)
 config();
 
-import { ProdStage } from '@horustech/ai-document-processor-cdk/stages';
-import { STAGES } from '@horustech/ai-document-processor-cdk/shared/constants';
-import { Labels } from '@horustech/ai-document-processor-cdk/shared/labels';
+import { STAGES, Labels, ProdStage } from '@miketran/ai-document-processor-cdk';
 
 const CDK_DEFAULT_REGION  = process.env.CDK_DEFAULT_REGION  || 'us-east-1';
 const CDK_DEFAULT_ACCOUNT = process.env.CDK_DEFAULT_ACCOUNT || '';
@@ -67,35 +65,35 @@ const CUSTOMER_IDENTIFIER = process.env.CUSTOMER_IDENTIFIER || '';
 const app = new cdk.App();
 
 const labels = new Labels(
-APP_LABEL,
-STAGES.prod,
-APP_REGION,
-APP_NAME,
-'marketplace',
-'-',
+        APP_LABEL,
+        STAGES.prod,
+        APP_REGION,
+        APP_NAME,
+        'marketplace',
+        '-',
 );
 
 new ProdStage(
-app,
-STAGES.prod,
-{
-labels,
-complianceFramework: COMPLIANCE_FRAMEWORK,
-description: 'AI Document Processing Platform',
-adminEmail: ADMIN_EMAIL,
-adminFamilyName: ADMIN_FAMILY_NAME,
-adminGivenName: ADMIN_GIVEN_NAME,
-clientUrl: CLIENT_URL,
-vendorName: VENDOR_NAME,
-huggingfaceHubToken: HUGGINGFACE_HUB_TOKEN,
-targetRegion: TARGET_REGION,
-reportsTableName: REPORTS_TABLE_NAME,
-crossAccountRoleArn: CROSS_ACCOUNT_ROLE_ARN,
-externalId: EXTERNAL_ID,
-customerIdentifier: CUSTOMER_IDENTIFIER,
-env: { region: CDK_DEFAULT_REGION, account: CDK_DEFAULT_ACCOUNT },
-},
-{ env: { region: CDK_DEFAULT_REGION, account: CDK_DEFAULT_ACCOUNT } },
+        app,
+        STAGES.prod,
+        {
+          labels,
+          complianceFramework: COMPLIANCE_FRAMEWORK,
+          description: 'AI Document Processing Platform',
+          adminEmail: ADMIN_EMAIL,
+          adminFamilyName: ADMIN_FAMILY_NAME,
+          adminGivenName: ADMIN_GIVEN_NAME,
+          clientUrl: CLIENT_URL,
+          vendorName: VENDOR_NAME,
+          huggingfaceHubToken: HUGGINGFACE_HUB_TOKEN,
+          targetRegion: TARGET_REGION,
+          reportsTableName: REPORTS_TABLE_NAME,
+          crossAccountRoleArn: CROSS_ACCOUNT_ROLE_ARN,
+          externalId: EXTERNAL_ID,
+          customerIdentifier: CUSTOMER_IDENTIFIER,
+          env: { region: CDK_DEFAULT_REGION, account: CDK_DEFAULT_ACCOUNT },
+        },
+        { env: { region: CDK_DEFAULT_REGION, account: CDK_DEFAULT_ACCOUNT } },
 );
 
 app.synth();
