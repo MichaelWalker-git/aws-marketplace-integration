@@ -75,6 +75,7 @@ CUSTOMER_IDENTIFIER={{CUSTOMER_IDENTIFIER}}
 CROSS_ACCOUNT_ROLE_ARN={{CROSS_ACCOUNT_ROLE_ARN}}
 EXTERNAL_ID={{EXTERNAL_ID}}
 REPORTS_TABLE_NAME={{REPORTS_TABLE_NAME}}
+TARGET_REGION={{TARGET_REGION}}
 
 # Application Settings
 APP_NAME=ai-document-processor
@@ -83,7 +84,7 @@ APP_REGION=eu-central-1
 COMPLIANCE_FRAMEWORK=hipaa
 
 # Admin Configuration
-ADMIN_EMAIL=admin@yourcompany.com
+ADMIN_EMAIL=admin@yourcompany.com  # Will receive invitation email after deployment
 ADMIN_FAMILY_NAME=Admin
 ADMIN_GIVEN_NAME=Super
 
@@ -245,31 +246,55 @@ The deployment creates these stacks in order:
 
 ## ✅ Verification
 
+### Admin User Setup
+
+After successful deployment, an **invitation email** will be automatically sent to the address specified in `ADMIN_EMAIL`. This email contains:
+- Temporary password
+- Link to Cognito login page
+- Instructions to set up your account
+
+**Note**: Check your spam folder if you don't see the invitation within 5 minutes.
+
 ### Check Stack Outputs
 
 ```bash
-# View all outputs
+# View all outputs from all stacks
 cat outputs.json | jq '.'
 
-# Get specific stack outputs
+# Get Backend stack outputs (API, Cognito)
 aws cloudformation describe-stacks \
-  --stack-name AiDocProcessor-prod-eu-central-1-backend-app \
+  --stack-name AiDocProcessor-prod-[YOUR_REGION]-backend-app \
   --query 'Stacks[0].Outputs' \
   --output table
+
+# Get Frontend stack outputs (CloudFront URL)
+aws cloudformation describe-stacks \
+  --stack-name AiDocProcessor-prod-[YOUR_REGION]-FrontEnd-Stack \
+  --query 'Stacks[0].Outputs[?OutputKey==`distribution`].OutputValue' \
+  --output text
 ```
 
-### Key Outputs to Note:
-- **API Endpoint URL**
-- **Cognito User Pool ID & Client ID**
-- **S3 Bucket Names**
-- **CloudFront Distribution URL**
+### Key Outputs by Stack:
+
+**Backend App Stack:**
+- API Endpoint URL
+- Cognito User Pool ID & Client ID
+- Cognito Domain
+
+**S3 Stack:**
+- Input/Output/Async Bucket Names
+
+**Frontend Stack:**
+- CloudFront Distribution URL
 
 ### Test the Application
 
-1. Navigate to CloudFront URL (from outputs)
-2. Sign up/sign in via Cognito
-3. Upload a test document
-4. Verify processing completes
+1. Check email for admin invitation (sent to `ADMIN_EMAIL`)
+2. Navigate to CloudFront URL (from Frontend Stack outputs)
+3. Sign in with credentials from invitation email
+4. Set new password when prompted
+5. Upload a test document
+6. Verify processing completes
 
 ---
 
@@ -281,6 +306,7 @@ aws cloudformation describe-stacks \
 |-------|----------|
 | **No AWS credentials** | Run `aws configure` |
 | **Stack already exists** | `npx cdk destroy --all` then redeploy |
+| **Admin invitation not received** | Check spam folder; verify ADMIN_EMAIL is correct; resend from Cognito console |
 | **SageMaker fails** | Check HuggingFace token & ml.g5.2xlarge quota |
 | **Frontend build fails** | Ensure `../client-app` exists with valid build |
 | **CDK bootstrap needed** | `npx cdk bootstrap aws://ACCOUNT/REGION` |

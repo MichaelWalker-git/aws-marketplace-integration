@@ -84,7 +84,7 @@ function personalizeInstructions(content: string, customerData: {
     return content
         .replace(/\{\{CUSTOMER_IDENTIFIER\}\}/g, customerData.customerIdentifier)
         .replace(/\{\{EXTERNAL_ID\}\}/g, customerData.customerIdentifier)
-        .replace(/\{\{REGION\}\}/g, region)
+        .replace(/\{\{TARGET_REGION\}\}/g, region)
         .replace(/\{\{CROSS_ACCOUNT_ROLE_ARN\}\}/g, customerData.usageRoleArn)
         .replace(/\{\{CUSTOMER_ACCOUNT_ID\}\}/g, customerData.customerAccountId)
         .replace(/\{\{REPORTS_TABLE_NAME\}\}/g, usageTableName || 'your-usage-table')

@@ -44,7 +44,8 @@ export async function grantCrossAccountAccess(customerAccountId: string, custome
                 Resource: `arn:aws:dynamodb:${region}:${process.env.AWS_ACCOUNT_ID}:table/${usageTableName}`,
                 Condition: {
                     "ForAllValues:StringEquals": {
-                        "dynamodb:Attributes": ["customerIdentifier", "timestamp", "usageQuantity", "dimension"]
+                        "dynamodb:Attributes": ["customerIdentifier", "timestamp", "usageQuantity", "dimension",
+                            "metering_pending", "create_timestamp", "quantity", "ttl"]
                     }
                 }
             }
